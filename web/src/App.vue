@@ -94,17 +94,39 @@ function getTimeString(turn: number) {
   return `${(startHour + t).toString().padStart(2, '0')}:00`
 }
 
-function resetGame() {
-  playerStore.resetPlayerState()
-  gameStore.startNewGame()
-  eventLogs.value = []
-  addLog({ time: '09:00', type: 'info', message: '区块已重新加载。' })
+async function resetGame() {
+  try {
+    // 调用后端API重新开始游戏
+    await playerStore.startNewGame(gameStore.gameState.difficulty)
+
+    // 重置本地游戏状态
+    gameStore.startNewGame()
+
+    eventLogs.value = []
+    addLog({ time: '09:00', type: 'info', message: '区块已重新加载。' })
+  }
+  catch (error) {
+    console.error('重置游戏失败:', error)
+    addLog({ time: '09:00', type: 'error', message: `重置失败: ${error}` })
+  }
 }
 
-onMounted(() => {
-  gameStore.startNewGame()
-  currentStatusText.value = '准备就绪'
-  addLog({ time: '09:00', type: 'info', message: '欢迎进入摸鱼服务器。' })
+onMounted(async () => {
+  try {
+    // 调用后端API初始化游戏
+    await playerStore.startNewGame('normal')
+
+    // 重置本地游戏状态
+    gameStore.startNewGame()
+
+    currentStatusText.value = '准备就绪'
+    addLog({ time: '09:00', type: 'info', message: '欢迎进入摸鱼服务器。' })
+  }
+  catch (error) {
+    console.error('游戏初始化失败:', error)
+    currentStatusText.value = '连接失败'
+    addLog({ time: '09:00', type: 'error', message: `无法连接到服务器: ${error}` })
+  }
 })
 </script>
 
