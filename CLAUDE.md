@@ -1,4 +1,4 @@
-# 摸鱼大作战 (Slack Master 2024) - AI 开发导航
+# 摸鱼大作战 (Slack Master 2026) - AI 开发导航
 
 > 像素风程序员职场生存模拟游戏 | Vue 3 + TypeScript + Vite
 
@@ -29,32 +29,29 @@
 
 ```mermaid
 graph TD
-    A["摸鱼大作战 (根)"] --> B["src/"];
-    B --> C["components/ UI组件"];
-    B --> D["stores/ Pinia状态"];
-    B --> E["game/ 游戏核心"];
-    E --> F["types/ 类型定义"];
-    E --> G["core/ 游戏引擎"];
-    E --> H["data/ 游戏数据"];
-    A --> I["docs/ 设计文档"];
-    A --> J["配置文件"];
+    A["摸鱼大作战 (根)"] --> B["web/"];
+    B --> C["src/"];
+    C --> D["components/ UI组件"];
+    C --> E["stores/ Pinia状态"];
+    C --> F["game/ 游戏核心"];
+    F --> G["types/ 类型定义"];
+    F --> H["core/ 游戏引擎"];
+    F --> I["data/ 游戏数据"];
 
-    click C "#src-components" "UI组件模块"
-    click D "#src-stores" "状态管理模块"
-    click E "#src-game" "游戏核心模块"
-    click I "#docs" "设计文档"
+    click D "#websrccomponents" "UI组件模块"
+    click E "#websrcstores" "状态管理模块"
+    click F "#websrcgame" "游戏核心模块"
 ```
 
 ### 模块索引
 
 | 模块路径 | 职责 | 关键文件/命令 | 现有文档 |
 |---------|------|--------------|---------|
-| **src/components/** | UI组件层 | HUD.vue, ActionPanel.vue, EventArea.vue | - |
-| **src/stores/** | Pinia状态管理 | game.ts, player.ts, ui.ts | @docs/FRONTEND-ARCHITECTURE.md#4-状态管理 |
-| **src/game/types/** | TypeScript类型定义 | player.ts, actions.ts, events.ts | - |
-| **src/game/core/** | 游戏引擎 | engine.ts (GameEngine类) | - |
-| **src/game/data/** | 游戏配置数据 | actions.ts, events.ts, constants.ts | - |
-| **docs/** | 设计文档 | DESIGN.md, FRONTEND-ARCHITECTURE.md, UI-UX-DESIGN.md | @docs/ |
+| **web/src/components/** | UI组件层 | HUD.vue, ActionPanel.vue, EventArea.vue | @web/src/components/CLAUDE.md |
+| **web/src/stores/** | Pinia状态管理 | game.ts, player.ts, ui.ts | @web/src/stores/CLAUDE.md |
+| **web/src/game/types/** | TypeScript类型定义 | player.ts, actions.ts, events.ts | @web/src/game/CLAUDE.md |
+| **web/src/game/core/** | 游戏引擎 | engine.ts (GameEngine类) | @web/src/game/CLAUDE.md |
+| **web/src/game/data/** | 游戏配置数据 | actions.ts, events.ts, constants.ts | @web/src/game/CLAUDE.md |
 
 ---
 
@@ -62,6 +59,9 @@ graph TD
 
 ### 安装与运行
 ```bash
+# 进入项目目录
+cd web
+
 # 安装依赖
 pnpm install
 
@@ -102,25 +102,22 @@ User Action → Component → Store (Pinia) → Game Engine → State Update →
 - **UI Store**: UI相关状态（弹窗、加载状态、错误提示等）
 
 ### 4. 类型安全
-使用TypeScript严格模式，所有游戏数据结构都有明确类型定义（@src/game/types/）
+使用TypeScript严格模式，所有游戏数据结构都有明确类型定义（@web/src/game/types/）
 
 ---
 
 ## 参考文档（使用 @ 引用实现渐进式披露）
 
-### 核心设计
-- **游戏设计**: @docs/DESIGN.md - MDA框架、核心机制、事件系统、技能树
-- **前端架构**: @docs/FRONTEND-ARCHITECTURE.md - 技术栈、状态管理、组件设计、数据流
-- **UI/UX设计**: @docs/UI-UX-DESIGN.md - 像素终端风格、交互设计
-
-### 游戏参考
-- @design-system/slack-master-2024/MASTER.md - 原始游戏设计规范
+### 核心模块文档
+- **UI组件**: @web/src/components/CLAUDE.md - HUD、行动面板、事件区域
+- **状态管理**: @web/src/stores/CLAUDE.md - Game/Player/UI Store
+- **游戏核心**: @web/src/game/CLAUDE.md - 类型定义、游戏引擎、数据配置
 
 ### 配置文件
-- vite.config.ts - Vite构建配置
-- uno.config.ts - UnoCSS原子化样式配置
-- tsconfig.json - TypeScript编译配置
-- eslint.config.mjs - 代码规范配置
+- @web/vite.config.ts - Vite构建配置
+- @web/uno.config.ts - UnoCSS原子化样式配置（像素风格主题）
+- @web/tsconfig.json - TypeScript编译配置
+- @web/package.json - 依赖与脚本
 
 ---
 
@@ -164,8 +161,6 @@ test: 测试相关
 - 丰富的随机事件系统
 - 存档系统
 
-详见: @docs/DESIGN.md#6-开发路线图
-
 ---
 
 ## 测试策略
@@ -181,16 +176,16 @@ test: 测试相关
 ## 常见问题
 
 ### Q: 如何添加新行动？
-A: 在 `src/game/data/actions.ts` 中添加新的 ActionType 配置
+A: 在 `web/src/game/data/actions.ts` 中添加新的 ActionType 配置
 
 ### Q: 如何修改游戏平衡性？
-A: 调整 `src/game/data/actions.ts` 中的 effects 数值
+A: 调整 `web/src/game/data/actions.ts` 中的 effects 数值
 
 ### Q: 如何添加新事件？
-A: 在 `src/game/data/events.ts` 中添加新的事件定义
+A: 在 `web/src/game/data/events.ts` 中添加新的事件定义
 
 ### Q: 状态如何持久化？
-A: 使用 Pinia + LocalStorage（规划中，详见 @docs/FRONTEND-ARCHITECTURE.md#11-部署策略）
+A: 使用 Pinia + LocalStorage（规划中）
 
 ---
 
@@ -199,7 +194,8 @@ A: 使用 Pinia + LocalStorage（规划中，详见 @docs/FRONTEND-ARCHITECTURE.
 ### 2026-02-10
 - 初始化AI上下文文档
 - 生成模块导航与架构索引
-- 链接到现有设计文档
+- 链接到现有模块文档
+- 修正项目路径（添加 web/ 前缀）
 
 ---
 

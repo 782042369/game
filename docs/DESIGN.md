@@ -1,6 +1,6 @@
 # 摸鱼大作战 - 完整设计文档
 
-> **项目代号**: Slack Master 2024
+> **项目代号**: Slack Master 2026
 > **游戏类型**: 文字冒险 + 模拟经营 + Roguelike
 > **目标平台**: Web (Vue 3 + TypeScript)
 > **文档版本**: v1.0
