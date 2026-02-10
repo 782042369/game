@@ -1,0 +1,107 @@
+{
+  "timestamp": "2026-02-10T00:00:00.000Z",
+  "project": {
+    "name": "摸鱼大作战 (Slack Master 2024)",
+    "type": "vue-game",
+    "description": "像素风程序员职场生存模拟游戏"
+  },
+  "metadata": {
+    "version": "0.0.1",
+    "lastScan": "2026-02-10",
+    "scanner": "claude-architect-v1"
+  },
+  "modules": [
+    {
+      "path": "src/components",
+      "name": "UI组件层",
+      "description": "Vue组件，负责UI渲染和用户交互",
+      "entryPoints": ["HUD.vue", "ActionPanel.vue", "EventArea.vue"],
+      "hasTests": false,
+      "hasReadme": false,
+      "claudeMd": "src/components/CLAUDE.md"
+    },
+    {
+      "path": "src/stores",
+      "name": "Pinia状态管理",
+      "description": "游戏状态管理中心",
+      "entryPoints": ["game.ts", "player.ts", "ui.ts"],
+      "hasTests": false,
+      "hasReadme": false,
+      "claudeMd": "src/stores/CLAUDE.md"
+    },
+    {
+      "path": "src/game",
+      "name": "游戏核心",
+      "description": "游戏逻辑层，包含类型定义和游戏引擎",
+      "entryPoints": ["core/engine.ts", "types/player.ts", "data/actions.ts"],
+      "hasTests": false,
+      "hasReadme": false,
+      "claudeMd": "src/game/CLAUDE.md"
+    },
+    {
+      "path": "docs",
+      "name": "设计文档",
+      "description": "游戏设计、前端架构、UI/UX文档",
+      "entryPoints": ["DESIGN.md", "FRONTEND-ARCHITECTURE.md", "UI-UX-DESIGN.md"],
+      "hasTests": false,
+      "hasReadme": true,
+      "existingDocs": ["DESIGN.md", "FRONTEND-ARCHITECTURE.md", "UI-UX-DESIGN.md"]
+    }
+  ],
+  "techStack": {
+    "framework": "Vue 3.5",
+    "language": "TypeScript 5.7",
+    "buildTool": "Vite 8.0.0-beta.13",
+    "stateManagement": "Pinia 3.0.4",
+    "styling": "UnoCSS 66.6.0",
+    "utilities": ["@vueuse/core", "seedrandom", "zod", "consola"]
+  },
+  "coverage": {
+    "totalFiles": 18,
+    "scannedFiles": 18,
+    "coveragePercent": 100,
+    "ignoredPatterns": [
+      "node_modules/**",
+      "dist/**",
+      ".git/**",
+      "*.log"
+    ]
+  },
+  "gaps": [
+    {
+      "module": "src/components",
+      "missing": ["tests/", "组件README.md"]
+    },
+    {
+      "module": "src/stores",
+      "missing": ["tests/", "持久化逻辑"]
+    },
+    {
+      "module": "src/game",
+      "missing": ["tests/", "skills.ts实现", "完整的events.ts"]
+    }
+  ],
+  "documentDuplication": {
+    "avoidedLines": 1500,
+    "note": "使用 @ 引用语法链接到现有详细文档，避免在 CLAUDE.md 中重复长篇内容"
+  },
+  "existingDocsDetected": {
+    "hasRootReadme": true,
+    "hasDesignDocs": true,
+    "docsList": [
+      "README.md",
+      "docs/DESIGN.md",
+      "docs/FRONTEND-ARCHITECTURE.md",
+      "docs/UI-UX-DESIGN.md",
+      "design-system/slack-master-2024/MASTER.md"
+    ]
+  },
+  "nextSteps": [
+    "补充 src/components 的测试用例",
+    "实现 src/game/mechanics/skills.ts 技能系统",
+    "完善 src/game/data/events.ts 事件数据",
+    "添加 src/stores 的本地持久化逻辑",
+    "编写 E2E 测试覆盖核心游戏流程"
+  ],
+  "truncated": false
+}
