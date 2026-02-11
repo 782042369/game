@@ -32,7 +32,7 @@ class PositionInfo(BaseModel):
 class NPCInfo(BaseModel):
     """NPC信息（老板/领导）- 简化版"""
     name: str = Field(..., description="NPC姓名")
-    role: Literal["boss", "leader", "colleague"] = Field(..., description="角色类型")
+    role: str = Field(..., description="角色类型（放宽为任意字符串）")  # 放宽限制
     personality: str = Field(..., description="性格特点")
     description: str = Field(..., description="外貌/行为描述")
 
@@ -67,7 +67,7 @@ class NPCProfile(BaseModel):
     """NPC详细档案"""
     id: str = Field(..., description="NPC唯一标识")
     name: str = Field(..., description="NPC姓名")
-    role: Literal["boss", "colleague", "mentor", "leader", "rival", "hr"] = Field(..., description="角色类型")
+    role: str = Field(..., description="角色类型（放宽为任意字符串）")  # 放宽限制
     personality: str = Field(..., description="性格特点")
     background: Optional[str] = Field(None, description="背景故事")
     appearance: Optional[str] = Field(None, description="外貌描述")
@@ -82,7 +82,7 @@ class NPCProfile(BaseModel):
 
 class MagicalElement(BaseModel):
     """魔幻元素"""
-    type: Literal["object", "phenomenon", "ability"] = Field(
+    type: Literal["object", "phenomenon", "ability"] = Field(  # 恢复为枚举
         ..., description="元素类型：物品/现象/能力"
     )
     name: str = Field(..., description="元素名称")
@@ -101,11 +101,11 @@ class NPCReaction(BaseModel):
 
 class TriggeredEvent(BaseModel):
     """触发的事件"""
-    id: Optional[str] = Field(None, description="事件ID（可选，临时放宽验证）")
-    type: Literal["positive", "negative", "neutral", "magical"] = Field(
+    id: Optional[str] = Field(None, description="事件ID（可选）")
+    type: Literal["positive", "negative", "neutral", "magical", "threshold", "chain", "time", "random"] = Field(  # 恢复为枚举并扩展
         ..., description="事件类型"
     )
-    description: str = Field(..., description="事件描述")
+    message: Optional[str] = Field(None, description="事件描述")  # 改为可选
     effects: Dict[str, int] = Field(
         default_factory=dict, description="事件带来的属性影响"
     )
@@ -114,7 +114,7 @@ class TriggeredEvent(BaseModel):
 class CompanyInfo(BaseModel):
     """公司信息"""
     name: str = Field(..., description="公司名称")
-    type: Literal["tech", "finance", "traditional", "startup"] = Field(..., description="公司类型")
+    type: str = Field(..., description="公司类型（放宽为任意字符串）")  # 放宽限制
     culture: str = Field(..., description="公司文化描述")
     atmosphere: str = Field(..., description="办公氛围描述")
 
@@ -122,7 +122,7 @@ class CompanyInfo(BaseModel):
 class WarmStory(BaseModel):
     """温暖剧情文本"""
     text: str = Field(..., description="温暖治愈的剧情文本")
-    mood: Literal["warm", "funny", "inspiring", "relaxing"] = Field(..., description="情绪类型")
+    mood: str = Field(..., description="情绪类型（放宽为任意字符串）")  # 放宽限制
 
 
 # ========== 原有模型 ==========
@@ -146,8 +146,8 @@ class AIChoice(BaseModel):
     """AI 生成的游戏选项"""
     id: str = Field(..., description="选项唯一标识")
     text: str = Field(..., min_length=1, max_length=100, description="选项描述（20字以内）")
-    category: Optional[Literal["work", "slack", "skill", "social", "growth", "betray", "rest", "explore", "special"]] = Field(
-        None, description="选项类别（扩展支持更多AI生成内容）"
+    category: Optional[str] = Field(  # 改宽为任意字符串
+        None, description="选项类别（放宽为任意字符串）"
     )
     effects: Dict[str, int] = Field(
         ...,
@@ -225,17 +225,15 @@ class GameStartResponse(BaseModel):
     message: str = Field(..., description="欢迎消息")
     choices: List[AIChoice] = Field(default_factory=list, description="初始选项")
 
-    # 新增：NPC和公司信息（简化版）
-    npc_info: Optional[NPCInfo] = Field(None, description="NPC（老板/领导）信息")
-    company_info: Optional[CompanyInfo] = Field(None, description="公司信息")
-    warm_story: Optional[WarmStory] = Field(None, description="温暖剧情文本")
-
-    # 新增：游戏元数据和详细档案
+    # 游戏元数据（AI生成的创意设定）
     game_meta: Optional[GameMeta] = Field(None, description="游戏元数据")
+    # 公司详细档案
     company_profile: Optional[CompanyProfile] = Field(None, description="公司详细档案")
+    # NPC详细档案列表
     npcs: List[NPCProfile] = Field(
         default_factory=list, description="NPC详细档案列表（3-4个）"
     )
+    # 当前触发的魔幻元素
     current_magical_element: Optional[MagicalElement] = Field(
         None, description="当前触发的魔幻元素"
     )
@@ -269,19 +267,20 @@ class ChoiceSubmitResponse(BaseModel):
     success: bool = Field(..., description="是否成功")
     player_state: Dict = Field(..., description="更新后的玩家状态（可以是任意类型）")
     feedback: ActionFeedback = Field(..., description="行动反馈")
+    # 触发的事件列表
     triggered_events: List[TriggeredEvent] = Field(
-        default_factory=list, description="触发的事件列表（详细版）"
+        default_factory=list, description="触发的事件列表"
     )
     game_over: bool = Field(False, description="游戏是否结束")
     game_over_reason: Optional[str] = Field(None, description="游戏结束原因")
 
-    # 新增：NPC和公司信息（可能因升职而变化）
-    npc_info: Optional[NPCInfo] = Field(None, description="更新后的NPC信息")
-    company_info: Optional[CompanyInfo] = Field(None, description="公司信息")
-    warm_story: Optional[WarmStory] = Field(None, description="温暖剧情文本")
-
-    # 新增：NPC反应和魔幻元素
+    # NPC更新后的档案列表（因升职或态度变化）
+    updated_npcs: List[NPCProfile] = Field(
+        default_factory=list, description="NPC更新后的档案列表"
+    )
+    # NPC对玩家行为的反应
     npc_reaction: Optional[NPCReaction] = Field(None, description="NPC对玩家行为的反应")
+    # 当前触发的魔幻元素
     current_magical_element: Optional[MagicalElement] = Field(
         None, description="当前触发的魔幻元素"
     )

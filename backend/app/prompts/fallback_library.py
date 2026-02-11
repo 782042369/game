@@ -495,7 +495,7 @@ FALLBACK_ENDINGS: Dict[str, Dict[str, Dict[str, str]]] = {
 
 def get_random_company(seed: int) -> Dict[str, Any]:
     """
-    根据种子获取随机公司
+    根据种子获取随机公司（赛博朋克降权）
 
     Args:
         seed: 随机种子
@@ -505,14 +505,22 @@ def get_random_company(seed: int) -> Dict[str, Any]:
     """
     import random
     random.seed(seed)
-    company_keys = list(FALLBACK_COMPANIES.keys())
-    selected_key = random.choice(company_keys)
+
+    # 构建权重池（赛博朋克权重1:5，其他权重5:1）
+    weighted_companies = []
+    for key, company in FALLBACK_COMPANIES.items():
+        if key == "cyberpunk":
+            weighted_companies.extend([key] * 1)
+        else:
+            weighted_companies.extend([key] * 5)
+
+    selected_key = random.choice(weighted_companies)
     return FALLBACK_COMPANIES[selected_key].copy()
 
 
 def get_random_npcs(seed: int, count: int = 3) -> List[Dict[str, Any]]:
     """
-    根据种子获取随机NPC列表
+    根据种子获取随机NPC列表（AI老板降权）
 
     Args:
         seed: 随机种子
@@ -527,8 +535,19 @@ def get_random_npcs(seed: int, count: int = 3) -> List[Dict[str, Any]]:
     # 确保数量在合理范围
     count = max(3, min(4, count))
 
+    # 构建权重池（AI老板权重1:5，其他权重5:1）
+    weighted_bosses = []
+    weighted_colleagues = []
+    for boss in FALLBACK_NPCS["boss_types"]:
+        if boss["id"] == "boss_ai":
+            weighted_bosses.extend([boss] * 1)
+        else:
+            weighted_bosses.extend([boss] * 5)
+    for colleague in FALLBACK_NPCS["colleague_types"]:
+        weighted_colleagues.extend([colleague] * 5)
+
     # 合并所有NPC池
-    all_npcs = FALLBACK_NPCS["boss_types"] + FALLBACK_NPCS["colleague_types"]
+    all_npcs = weighted_bosses + weighted_colleagues
 
     # 随机选择指定数量的NPC
     selected = random.sample(all_npcs, min(count, len(all_npcs)))
@@ -584,5 +603,13 @@ def get_all_company_types() -> List[str]:
 
 
 def get_all_style_names() -> List[str]:
-    """获取所有风格名称列表"""
-    return list(FALLBACK_STYLES.keys())
+    """获取所有风格名称列表（赛博朋克降权）"""
+    # 构建权重池（赛博朋克风格权重1:5，其他权重5:1）
+    weighted_styles = []
+    for style_name in FALLBACK_STYLES.keys():
+        if style_name == "cyberpunk_tech":
+            weighted_styles.extend([style_name] * 1)
+        else:
+            weighted_styles.extend([style_name] * 5)
+
+    return weighted_styles

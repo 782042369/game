@@ -7,6 +7,8 @@ API 路由端点（v2 - AI驱动架构）
 - 前端纯展示层
 """
 import uuid
+import time
+from functools import wraps
 from typing import Literal
 from fastapi import APIRouter, HTTPException, status, Depends
 from loguru import logger
@@ -19,10 +21,7 @@ from app.api.schemas import (
     ChoiceSubmitRequest,
     ChoiceSubmitResponse,
     ErrorResponse,
-    NPCInfo,
-    CompanyInfo,
     CompanyProfile,
-    WarmStory,
     ActionFeedback,
     filter_player_state_for_frontend,
 )
@@ -31,6 +30,26 @@ from app.services.context_service import ContextService
 from app.services.ai_service_v2 import AIServiceV2
 from app.repositories.database import get_db_session
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+# API性能监控装饰器
+def log_api_time(func_name: str):
+    """装饰器：记录API端点执行时间"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            start_time = time.time()
+            try:
+                result = await func(*args, **kwargs)
+                elapsed = time.time() - start_time
+                logger.info(f"⏱️ API[{func_name}] 耗时: {elapsed:.3f}秒")
+                return result
+            except Exception as e:
+                elapsed = time.time() - start_time
+                logger.error(f"❌ API[{func_name}] 失败 (耗时{elapsed:.3f}秒): {e}")
+                raise
+        return wrapper
+    return decorator
 
 # 创建路由器
 router = APIRouter()
@@ -69,6 +88,7 @@ async def get_ai_service() -> AIServiceV2:
     summary="开始新游戏",
     description="创建新的游戏会话并返回AI生成的初始内容",
 )
+@log_api_time("开始游戏")
 async def start_game(
     request: GameStartRequest,
     session_service: SessionService = Depends(get_session_service),
@@ -150,28 +170,11 @@ async def start_game(
             for npc_data in ai_response["npcs"]:
                 npcs.append(NPCProfile(**npc_data))
 
-        # 解析简化版NPC信息（向后兼容）
-        npc_info = None
-        if ai_response.get("npc_info"):
-            npc_data = ai_response["npc_info"]
-            npc_info = NPCInfo(**npc_data)
-
-        # 解析简化版公司信息（向后兼容）
-        company_info = None
-        if ai_response.get("company_info") and not company_profile:
-            company_data = ai_response["company_info"]
-            company_info = CompanyInfo(**company_data)
-
         # 解析魔幻元素
         current_magical_element = None
         if ai_response.get("current_magical_element"):
             from app.api.schemas import MagicalElement
             current_magical_element = MagicalElement(**ai_response["current_magical_element"])
-
-        warm_story = None
-        if ai_response.get("warm_story"):
-            warm_data = ai_response["warm_story"]
-            warm_story = WarmStory(**warm_data)
 
         # 过滤玩家状态，移除隐藏字段（suspicion和progress）
         filtered_player_state = filter_player_state_for_frontend(
@@ -183,9 +186,6 @@ async def start_game(
             player_state=filtered_player_state,
             message=ai_response.get("story_context", ai_response.get("story", "欢迎来到摸鱼大作战！")),
             choices=ai_response.get("choices", []),
-            npc_info=npc_info,
-            company_info=company_info,
-            warm_story=warm_story,
             game_meta=game_meta,
             company_profile=company_profile,
             npcs=npcs,
@@ -206,6 +206,7 @@ async def start_game(
     summary="提交行动",
     description="处理玩家的行动选择并返回AI生成的新内容",
 )
+@log_api_time("提交行动")
 async def submit_action(
     request: ChoiceSubmitRequest,
     session_service: SessionService = Depends(get_session_service),
@@ -255,9 +256,6 @@ async def submit_action(
                 triggered_events=[],
                 game_over=True,
                 game_over_reason="游戏已结束",
-                npc_info=None,
-                company_info=None,
-                warm_story=None,
                 npc_reaction=None,
                 current_magical_element=None
             )
@@ -330,28 +328,12 @@ async def submit_action(
             )
 
         # 解析魔幻元素
+        # 解析魔幻元素
         current_magical_element = None
         element_data = ai_response.get("active_magical_element") or ai_response.get("current_magical_element")
         if element_data:
             from app.api.schemas import MagicalElement
             current_magical_element = MagicalElement(**element_data)
-
-        # 解析简化版NPC信息（向后兼容）
-        npc_info = None
-        if ai_response.get("npc_info"):
-            npc_data = ai_response["npc_info"]
-            npc_info = NPCInfo(**npc_data)
-
-        # 解析简化版公司信息（向后兼容）
-        company_info = None
-        if ai_response.get("company_info"):
-            company_data = ai_response["company_info"]
-            company_info = CompanyInfo(**company_data)
-
-        warm_story = None
-        if ai_response.get("warm_story"):
-            warm_data = ai_response["warm_story"]
-            warm_story = WarmStory(**warm_data)
 
         # 过滤玩家状态，移除隐藏字段（suspicion和progress）
         filtered_player_state = filter_player_state_for_frontend(
@@ -368,9 +350,7 @@ async def submit_action(
             triggered_events=ai_response.get("triggered_events", []),
             game_over=is_game_over,
             game_over_reason=ai_response.get("game_over_reason") if is_game_over else None,
-            npc_info=npc_info,
-            company_info=company_info,
-            warm_story=warm_story,
+            updated_npcs=updated_npcs,
             npc_reaction=npc_reaction,
             current_magical_element=current_magical_element
         )
@@ -390,6 +370,7 @@ async def submit_action(
     summary="获取当前状态",
     description="获取会话的当前状态和最近消息",
 )
+@log_api_time("获取状态")
 async def get_state(
     session_id: str,
     session_service: SessionService = Depends(get_session_service),

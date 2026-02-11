@@ -43,8 +43,8 @@ cp .env.example .env
 # 方式1：直接启动
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 方式2：后台启动（日志写入 server.log）
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > server.log 2>&1 &
+# 方式2：后台启动
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 访问 API 文档：http://localhost:8000/docs
