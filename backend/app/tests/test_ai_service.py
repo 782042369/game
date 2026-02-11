@@ -91,7 +91,7 @@ class TestAIService:
                 service = AIService()
                 service.client = AsyncMock()
                 service.client.chat.completions.create = AsyncMock(return_value=mock_response)
-                service.model = "gpt-4o-mini"
+                service.model = "gemini-2.0-flash-lite"
 
                 player_state = {
                     "day": 1,
@@ -122,7 +122,7 @@ class TestAIService:
                 service = AIService()
                 service.client = AsyncMock()
                 service.client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
-                service.model = "gpt-4o-mini"
+                service.model = "gemini-2.0-flash-lite"
 
                 player_state = {
                     "day": 1,

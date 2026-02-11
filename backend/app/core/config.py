@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # OpenAI API 配置
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = ""  # 自定义 API 地址
-    OPENAI_MODEL: str = "gpt-4o-mini"  # 默认模型
+    OPENAI_MODEL: str = "gemini-2.0-flash-lite"  # 默认模型
 
     # 数据库配置
     DATABASE_URL: str = "sqlite+aiosqlite:///./game.db"
