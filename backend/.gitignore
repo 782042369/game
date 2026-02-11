@@ -19,6 +19,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.mypy_cache
+logs
 
 # Virtual Environment
 venv/
@@ -47,3 +49,4 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+*.log

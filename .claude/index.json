@@ -1,28 +1,32 @@
 {
-  "timestamp": "2026-02-10T23:27:25.000Z",
+  "timestamp": "2026-02-11T09:54:37.000Z",
   "project": {
     "name": "摸鱼大作战 (Slack Master 2026)",
-    "description": "2D文字冒险/RPG游戏 - 程序员职场生存模拟",
-    "type": "Web Game",
+    "description": "2D文字冒险/RPG游戏 - AI驱动的程序员职场生存模拟",
+    "type": "Web Game + AI Backend",
     "techStack": [
       "Vue 3.5",
       "TypeScript 5.7",
       "Vite 8",
       "Pinia",
-      "UnoCSS"
+      "UnoCSS",
+      "FastAPI",
+      "SQLAlchemy",
+      "OpenAI API"
     ]
   },
   "root": {
-    "path": "E:\\工作\\study\\game",
+    "path": "/Users/yanghongxuan/Desktop/game",
     "documentation": "CLAUDE.md",
-    "lines": 153,
-    "lastUpdated": "2026-02-10"
+    "lines": 137,
+    "lastUpdated": "2026-02-11"
   },
   "modules": [
     {
       "name": "web",
-      "path": "E:\\工作\\study\\game\\web",
-      "type": "monorepo-package",
+      "path": "/Users/yanghongxuan/Desktop/game/web",
+      "type": "frontend",
+      "language": "TypeScript/Vue",
       "entry": "src/main.ts",
       "configFiles": [
         "package.json",
@@ -31,6 +35,8 @@
         "tsconfig.json"
       ],
       "hasTests": false,
+      "hasREADME": true,
+      "documentation": "web/README.md",
       "submodules": [
         {
           "name": "components",
@@ -66,39 +72,112 @@
           "hasCLAUDEmd": true,
           "documentation": "web/src/game/CLAUDE.md",
           "lines": 116,
-          "submodules": [
-            {
-              "name": "types",
-              "files": [
-                "player.ts",
-                "actions.ts",
-                "events.ts",
-                "game.ts",
-                "skills.ts"
-              ]
-            },
-            {
-              "name": "core",
-              "files": [
-                "engine.ts"
-              ]
-            },
-            {
-              "name": "data",
-              "files": [
-                "actions.ts",
-                "events.ts",
-                "constants.ts"
-              ]
-            }
+          "files": [
+            "types/player.ts",
+            "types/actions.ts",
+            "types/events.ts",
+            "core/engine.ts",
+            "data/actions.ts",
+            "data/events.ts",
+            "data/constants.ts"
+          ]
+        },
+        {
+          "name": "api",
+          "path": "web/src/api",
+          "type": "api-client",
+          "hasCLAUDEmd": false,
+          "hasREADME": false,
+          "files": [
+            "game.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "backend",
+      "path": "/Users/yanghongxuan/Desktop/game/backend",
+      "type": "backend",
+      "language": "Python",
+      "entry": "app/main.py",
+      "configFiles": [
+        "pyproject.toml",
+        "requirements.txt",
+        ".env.example"
+      ],
+      "hasTests": true,
+      "hasREADME": true,
+      "documentation": "backend/README.md",
+      "submodules": [
+        {
+          "name": "api",
+          "path": "backend/app/api",
+          "type": "api-routes",
+          "files": [
+            "endpoints.py",
+            "schemas.py"
+          ]
+        },
+        {
+          "name": "core",
+          "path": "backend/app/core",
+          "type": "game-engine",
+          "files": [
+            "game_engine.py",
+            "constants.py",
+            "config.py"
+          ]
+        },
+        {
+          "name": "services",
+          "path": "backend/app/services",
+          "type": "business-logic",
+          "files": [
+            "ai_service.py",
+            "session_service.py"
+          ]
+        },
+        {
+          "name": "models",
+          "path": "backend/app/models",
+          "type": "database-models",
+          "files": [
+            "database.py"
+          ]
+        },
+        {
+          "name": "repositories",
+          "path": "backend/app/repositories",
+          "type": "data-access",
+          "files": [
+            "database.py"
+          ]
+        },
+        {
+          "name": "prompts",
+          "path": "backend/app/prompts",
+          "type": "ai-prompts",
+          "files": [
+            "system_prompt.py"
+          ]
+        },
+        {
+          "name": "tests",
+          "path": "backend/app/tests",
+          "type": "test-suite",
+          "files": [
+            "conftest.py",
+            "test_ai_service.py",
+            "test_api_endpoints.py",
+            "test_game_engine.py"
           ]
         }
       ]
     }
   ],
   "coverage": {
-    "estimatedTotalFiles": 21,
-    "scannedFiles": 21,
+    "estimatedTotalFiles": 47,
+    "scannedFiles": 47,
     "coveragePercentage": 100,
     "ignoredPaths": [
       "node_modules/**",
@@ -107,58 +186,65 @@
       "build/**",
       "*.lock",
       "*.log",
-      "*.bin"
+      "*.bin",
+      "__pycache__/**",
+      "*.pyc",
+      "venv/**",
+      ".venv/**"
     ],
     "moduleDocumentation": {
       "web/src/components": "已存在 CLAUDE.md (75行)",
       "web/src/stores": "已存在 CLAUDE.md (121行)",
-      "web/src/game": "已存在 CLAUDE.md (116行)"
+      "web/src/game": "已存在 CLAUDE.md (116行)",
+      "web/src/api": "缺少文档",
+      "backend": "已存在 README.md",
+      "backend/app/api": "在 backend/README.md 中描述",
+      "backend/app/core": "在 backend/README.md 中描述",
+      "backend/app/services": "在 backend/README.md 中描述"
     }
   },
   "documentationStats": {
     "rootCLAUDEmd": {
-      "path": "E:\\工作\\study\\game\\CLAUDE.md",
-      "lines": 153,
+      "path": "/Users/yanghongxuan/Desktop/game/CLAUDE.md",
+      "lines": 137,
       "status": "updated",
       "hasMermaidDiagram": true,
-      "hasBreadcrumb": false,
-      "atReferencesUsed": 6
+      "atReferencesUsed": 12
     },
-    "totalModuleDocuments": 3,
+    "totalModuleDocuments": 4,
     "existingDocumentsLinked": true,
     "duplicateContentAvoided": 0,
     "documentationReuseRate": "100%"
   },
   "gaps": [
     {
-      "module": "web/src/components",
+      "module": "web/src/api",
       "missing": [
-        "tests/",
-        "组件README.md"
+        "CLAUDE.md 或 README.md"
       ]
     },
     {
-      "module": "web/src/stores",
+      "module": "web",
       "missing": [
         "tests/",
-        "持久化逻辑"
+        "组件单元测试"
       ]
     },
     {
-      "module": "web/src/game",
+      "module": "backend",
       "missing": [
-        "tests/",
-        "skills.ts实现",
-        "完整的events.ts"
+        "模块级 CLAUDE.md (可通过 README.md 补充)",
+        "集成测试文档"
       ]
     }
   ],
   "nextSteps": [
-    "实现技能系统 (web/src/game/data/skills.ts)",
-    "添加存档功能 (使用 LocalStorage)",
-    "扩展事件库 (web/src/game/data/events.ts)",
-    "添加单元测试 (Vitest)",
-    "实现多结局系统"
+    "为 web/src/api 模块生成 CLAUDE.md",
+    "添加前端单元测试 (Vitest)",
+    "扩展后端集成测试覆盖",
+    "实现技能系统 (前后端联动)",
+    "添加存档系统",
+    "扩展事件库"
   ],
   "truncated": false
 }

@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.api.endpoints import router
-from app.core.constants import MAX_DAYS, MAX_TURNS_PER_DAY
 from app.repositories.database import init_database, close_database
 
 # 配置日志
