@@ -54,35 +54,48 @@ export interface StartGameRequest {
 // 开始游戏响应
 export interface StartGameResponse {
   session_id: string
-  player_state: ApiPlayerState
+  player_state: Record<string, number>
   message: string
-}
-
-// 获取选项请求
-export interface GetChoicesRequest {
-  session_id: string
-}
-
-// 获取选项响应
-export interface GetChoicesResponse {
-  story_context: string
   choices: ApiChoice[]
 }
 
-// 提交选择请求
+// 获取选项响应（后端实际返回的结构）
+export interface GetStateResponse {
+  session: {
+    session_id: string
+    status: string
+    metadata?: {
+      player_state?: Record<string, number>
+    }
+  }
+  recent_messages: Array<{
+    role: string
+    content: string
+    created_at: string
+  }>
+  token_stats: {
+    total_tokens: number
+    message_count: number
+  }
+}
+
+// 提交选择请求（对应后端 /api/game/act）
 export interface SubmitChoiceRequest {
   session_id: string
   choice_id: string
 }
 
-// 提交选择响应
+// 提交选择响应（对应后端 ChoiceSubmitResponse）
 export interface SubmitChoiceResponse {
-  player_state: ApiPlayerState
+  success: boolean
+  player_state: Record<string, number>
   feedback: {
     success: string
     flavor?: string[]
   }
-  triggered_events?: string[]
+  triggered_events: string[]
+  game_over: boolean
+  game_over_reason?: string
 }
 
 // 创建 axios 实例
@@ -91,7 +104,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10秒超时
+  timeout: 30000, // 30秒超时（AI响应可能较慢）
 })
 
 // 请求拦截器：添加错误处理
@@ -101,7 +114,7 @@ apiClient.interceptors.response.use(
     if (error.response) {
       // 服务器返回错误状态码
       throw new ApiError(
-        error.response.data?.message || 'API 请求失败',
+        error.response.data?.detail || error.response.data?.message || 'API 请求失败',
         error.response.status,
         error.response.data,
       )
@@ -138,28 +151,11 @@ export const gameApi = {
   },
 
   /**
-   * 获取 AI 生成的选项
-   */
-  async getChoices(sessionId: string): Promise<GetChoicesResponse> {
-    try {
-      const { data } = await apiClient.post<GetChoicesResponse>('/api/game/choices', {
-        session_id: sessionId,
-      })
-      return data
-    }
-    catch (error) {
-      if (error instanceof ApiError)
-        throw error
-      throw new ApiError('获取选项失败')
-    }
-  },
-
-  /**
-   * 提交玩家选择
+   * 提交玩家选择（对应后端 /api/game/act）
    */
   async submitChoice(sessionId: string, choiceId: string): Promise<SubmitChoiceResponse> {
     try {
-      const { data } = await apiClient.post<SubmitChoiceResponse>('/api/game/choice/submit', {
+      const { data } = await apiClient.post<SubmitChoiceResponse>('/api/game/act', {
         session_id: sessionId,
         choice_id: choiceId,
       })
@@ -169,6 +165,21 @@ export const gameApi = {
       if (error instanceof ApiError)
         throw error
       throw new ApiError('提交选择失败')
+    }
+  },
+
+  /**
+   * 获取当前状态
+   */
+  async getState(sessionId: string): Promise<GetStateResponse> {
+    try {
+      const { data } = await apiClient.get<GetStateResponse>(`/api/game/state?session_id=${sessionId}`)
+      return data
+    }
+    catch (error) {
+      if (error instanceof ApiError)
+        throw error
+      throw new ApiError('获取状态失败')
     }
   },
 }

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed } from 'vue'
 
-import { useGameStore } from '../stores/game'
+import type { ApiChoice } from '../api/game'
+
 import { usePlayerStore } from '../stores/player'
 
 const emit = defineEmits<{
@@ -9,15 +10,14 @@ const emit = defineEmits<{
 }>()
 
 const playerStore = usePlayerStore()
-const gameStore = useGameStore()
 
 const player = computed(() => playerStore.playerState)
-const gameState = computed(() => gameStore.gameState)
+const isGameOver = computed(() => playerStore.isGameOver)
+const isLoading = computed(() => playerStore.isLoading)
 
 // 从 Store 获取 AI 生成的选项
 const choices = computed(() => playerStore.currentChoices)
 const storyContext = computed(() => playerStore.storyContext)
-const isLoading = computed(() => playerStore.isLoading)
 const error = computed(() => playerStore.error)
 
 // 选项图标映射（根据 category）
@@ -33,56 +33,22 @@ function getIconForCategory(category: string): string {
   return categoryIcons[category] || '🎯'
 }
 
-function isDisabled(choice: any) {
-  if (gameState.value.isGameOver || gameState.value.isInEvent)
+function isDisabled(choice: ApiChoice): boolean {
+  if (isGameOver.value || isLoading.value)
     return true
-  if (choice.effects?.energy && choice.effects.energy > 0 && player.value.energy < choice.effects.energy)
+  // 检查精力是否足够
+  if (choice.effects?.energy && choice.effects.energy < 0 && player.value.energy < Math.abs(choice.effects.energy))
     return true
   return false
 }
 
-async function handleChoice(choice: any) {
+function handleChoice(choice: ApiChoice) {
   if (isDisabled(choice))
     return
 
-  try {
-    // 提交选择到后端
-    await playerStore.submitChoice(choice.id)
-
-    // 通知父组件
-    emit('choice', choice.id)
-
-    // 获取下一轮选项
-    await fetchNextChoices()
-  }
-  catch (err) {
-    console.error('提交选择失败:', err)
-  }
+  // 只发送事件，由父组件处理
+  emit('choice', choice.id)
 }
-
-async function fetchNextChoices() {
-  try {
-    await playerStore.fetchChoices()
-  }
-  catch (err) {
-    console.error('获取选项失败:', err)
-  }
-}
-
-// 组件挂载时获取选项
-onMounted(async () => {
-  // 如果已经有会话 ID，则获取选项
-  if (playerStore.sessionId) {
-    await fetchNextChoices()
-  }
-})
-
-// 监听会话 ID 变化，自动获取选项
-watch(() => playerStore.sessionId, async (newSessionId) => {
-  if (newSessionId) {
-    await fetchNextChoices()
-  }
-})
 </script>
 
 <template>
@@ -114,7 +80,7 @@ watch(() => playerStore.sessionId, async (newSessionId) => {
       <div class="flex flex-col items-center gap-3">
         <div class="animate-spin text-4xl">⚙️</div>
         <div class="text-mc-text font-pixel text-sm">
-          AI 正在思考中...
+          {{ isGameOver ? '游戏已结束' : 'AI 正在思考中...' }}
         </div>
       </div>
     </div>
@@ -129,12 +95,6 @@ watch(() => playerStore.sessionId, async (newSessionId) => {
         <div class="text-red-300 font-body text-sm text-center">
           {{ error }}
         </div>
-        <button
-          class="mc-btn text-xs px-3 py-1"
-          @click="fetchNextChoices"
-        >
-          重试
-        </button>
       </div>
     </div>
 
@@ -170,32 +130,19 @@ watch(() => playerStore.sessionId, async (newSessionId) => {
           {{ choice.text }}
         </div>
 
-        <!-- 属性影响 -->
-        <div class="mt-auto pt-2 w-full flex flex-wrap gap-1">
-          <span
-            v-if="choice.effects?.energy"
-            class="text-[10px] px-2 py-0.5 rounded-none font-bold border"
-            :class="choice.effects.energy > 0 ? 'bg-green-900/30 border-green-700 text-green-300' : 'bg-red-900/30 border-red-700 text-red-300'"
-          >
-            {{ choice.effects.energy > 0 ? '+' : '' }}{{ choice.effects.energy }}能量
+        <!-- 属性影响提示（简化显示） -->
+        <div class="mt-auto pt-2 w-full flex items-center gap-2 text-[10px] text-mc-text/60 font-pixel uppercase">
+          <span v-if="choice.effects?.energy" class="flex items-center gap-1">
+            <span>{{ choice.effects.energy > 0 ? '⚡' : '🪫' }}</span>
+            <span>{{ choice.effects.energy > 0 ? '恢复体力' : '消耗体力' }}</span>
           </span>
-          <span
-            v-if="choice.effects?.chill"
-            class="text-[10px] px-2 py-0.5 bg-cyan-900/30 border border-cyan-700 text-cyan-300 rounded-none font-bold"
-          >
-            {{ choice.effects.chill > 0 ? '+' : '' }}{{ choice.effects.chill }}摸鱼
+          <span v-if="choice.effects?.chill" class="flex items-center gap-1">
+            <span>{{ choice.effects.chill > 0 ? '😊' : '😰' }}</span>
+            <span>{{ choice.effects.chill > 0 ? '放松身心' : '增加压力' }}</span>
           </span>
-          <span
-            v-if="choice.effects?.progress"
-            class="text-[10px] px-2 py-0.5 bg-mc-exp/80 border border-green-700 text-green-900 rounded-none font-bold"
-          >
-            {{ choice.effects.progress > 0 ? '+' : '' }}{{ choice.effects.progress }}进度
-          </span>
-          <span
-            v-if="choice.effects?.suspicion"
-            class="text-[10px] px-2 py-0.5 bg-red-900/30 border border-red-700 text-red-300 rounded-none font-bold"
-          >
-            {{ choice.effects.suspicion > 0 ? '+' : '' }}{{ choice.effects.suspicion }}怀疑
+          <span v-if="choice.effects?.progress" class="flex items-center gap-1">
+            <span>📈</span>
+            <span>推进工作</span>
           </span>
         </div>
       </button>
@@ -208,7 +155,7 @@ watch(() => playerStore.sessionId, async (newSessionId) => {
     >
       <div class="flex flex-col items-center gap-2">
         <span class="text-2xl">🤔</span>
-        <p>等待 AI 生成选项...</p>
+        <p>{{ isLoading ? '加载中...' : '等待游戏开始...' }}</p>
       </div>
     </div>
   </div>
