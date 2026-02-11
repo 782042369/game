@@ -1,9 +1,10 @@
 """
-API 路由端点
+API 路由端点（v2 - AI驱动架构）
 
-实现核心游戏 API：开始游戏、获取选项、提交选择
-
-Phase 3 更新：使用数据库存储替代临时内存存储
+完全重构为AI代理模式：
+- 后端只负责AI调用和会话管理
+- 所有游戏逻辑由AI处理
+- 前端纯展示层
 """
 import uuid
 from typing import Literal
@@ -18,35 +19,44 @@ from app.api.schemas import (
     ChoiceSubmitRequest,
     ChoiceSubmitResponse,
     ErrorResponse,
-    PlayerState,
-    AIChoice,
+    NPCInfo,
+    CompanyInfo,
+    CompanyProfile,
+    WarmStory,
+    ActionFeedback,
+    filter_player_state_for_frontend,
 )
-from app.core.game_engine import GameEngine
-from app.core.constants import INITIAL_PLAYER_STATE
-from app.services.ai_service import AIService
 from app.services.session_service import SessionService
+from app.services.context_service import ContextService
+from app.services.ai_service_v2 import AIServiceV2
+from app.repositories.database import get_db_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 创建路由器
 router = APIRouter()
-
-# 初始化 AI 服务
-ai_service = AIService()
-
-# 当前可用的选项缓存（仅用于提交时验证，不需要持久化）
-current_choices: dict[str, list[AIChoice]] = {}
 
 
 # ========== 依赖注入 ==========
 
 
-async def get_session_service() -> SessionService:
-    """
-    获取 SessionService 实例
+async def get_session_service(
+    db: AsyncSession = Depends(get_db_session)
+) -> SessionService:
+    """获取 SessionService 实例"""
+    return SessionService(db)
 
-    Returns:
-        SessionService 实例
-    """
-    return SessionService()
+
+async def get_context_service(
+    db: AsyncSession = Depends(get_db_session),
+    ai_service: AIServiceV2 = Depends()
+) -> ContextService:
+    """获取 ContextService 实例"""
+    return ContextService(db, ai_service)
+
+
+async def get_ai_service() -> AIServiceV2:
+    """获取 AIServiceV2 实例"""
+    return AIServiceV2()
 
 
 # ========== API 端点 ==========
@@ -57,42 +67,129 @@ async def get_session_service() -> SessionService:
     response_model=GameStartResponse,
     status_code=status.HTTP_201_CREATED,
     summary="开始新游戏",
-    description="创建新的游戏会话并返回初始玩家状态",
+    description="创建新的游戏会话并返回AI生成的初始内容",
 )
 async def start_game(
     request: GameStartRequest,
     session_service: SessionService = Depends(get_session_service),
+    ai_service: AIServiceV2 = Depends(get_ai_service),
 ) -> GameStartResponse:
     """
-    开始新游戏（使用数据库存储）
+    开始新游戏（AI驱动模式）
+
+    流程：
+    1. 创建新会话（生成seed）
+    2. 调用AI生成初始剧情和选项
+    3. 返回AI生成的内容
 
     Args:
-        request: 游戏开始请求（包含玩家昵称和难度）
-        session_service: 会话管理服务
+        request: 游戏开始请求
+        session_service: 会话服务
+        ai_service: AI服务
 
     Returns:
-        游戏开始响应（包含会话ID和初始状态）
+        游戏开始响应（包含AI生成的初始内容）
 
     Raises:
         HTTPException 500: 服务器内部错误
     """
     try:
-        # 创建初始玩家状态
-        initial_state = PlayerState(**INITIAL_PLAYER_STATE)
-
-        # 使用 SessionService 创建会话
-        session_id = await session_service.create_session(
+        # 1. 创建会话
+        session_info = await session_service.create_game(
             player_name=request.player_name,
-            difficulty=request.difficulty,
-            initial_state=initial_state,
+            difficulty=request.difficulty
         )
 
-        logger.info(f"✅ 新游戏已创建 - Session ID: {session_id}, 玩家: {request.player_name}")
+        session_id = session_info["session_id"]
+        seed = session_info["seed"]
+
+        # 2. 调用AI生成初始内容
+        logger.info(f"🤖 调用AI生成初始内容 - Session: {session_id}")
+
+        ai_response = await ai_service.generate_initial_turn(
+            player_name=request.player_name,
+            difficulty=request.difficulty,
+            seed=seed
+        )
+
+        # 3. 记录初始消息（安全获取story，降级到story_context）
+        context_service = ContextService(
+            session_service.db,
+            ai_service
+        )
+        story_content = ai_response.get("story") or ai_response.get("story_context", "")
+        await context_service.add_message(
+            session_id=session_id,
+            role="assistant",
+            content=story_content
+        )
+
+        logger.success(f"✅ 新游戏已创建 - Session: {session_id}")
+
+        # 解析游戏元数据
+        game_meta = None
+        if ai_response.get("game_meta"):
+            from app.api.schemas import GameMeta
+            game_meta = GameMeta(**ai_response["game_meta"])
+
+        # 解析公司完整档案（包含 special_rules 和 magical_elements）
+        company_profile = None
+        if ai_response.get("company_info"):
+            company_data = ai_response["company_info"]
+            logger.debug(f"🔍 公司数据调试: {company_data}")
+            # 确保 magical_elements 是列表
+            if "magical_elements" in company_data and isinstance(company_data["magical_elements"], dict):
+                logger.warning(f"⚠️ magical_elements 是字典，转换为列表: {company_data['magical_elements']}")
+                company_data["magical_elements"] = list(company_data["magical_elements"].values())
+            company_profile = CompanyProfile(**company_data)
+
+        # 解析NPC完整档案列表
+        npcs = []
+        if ai_response.get("npcs"):
+            from app.api.schemas import NPCProfile
+            for npc_data in ai_response["npcs"]:
+                npcs.append(NPCProfile(**npc_data))
+
+        # 解析简化版NPC信息（向后兼容）
+        npc_info = None
+        if ai_response.get("npc_info"):
+            npc_data = ai_response["npc_info"]
+            npc_info = NPCInfo(**npc_data)
+
+        # 解析简化版公司信息（向后兼容）
+        company_info = None
+        if ai_response.get("company_info") and not company_profile:
+            company_data = ai_response["company_info"]
+            company_info = CompanyInfo(**company_data)
+
+        # 解析魔幻元素
+        current_magical_element = None
+        if ai_response.get("current_magical_element"):
+            from app.api.schemas import MagicalElement
+            current_magical_element = MagicalElement(**ai_response["current_magical_element"])
+
+        warm_story = None
+        if ai_response.get("warm_story"):
+            warm_data = ai_response["warm_story"]
+            warm_story = WarmStory(**warm_data)
+
+        # 过滤玩家状态，移除隐藏字段（suspicion和progress）
+        filtered_player_state = filter_player_state_for_frontend(
+            ai_response.get("player_state", {})
+        )
 
         return GameStartResponse(
             session_id=session_id,
-            player_state=initial_state,
-            message=f"欢迎，{request.player_name}！你的职场摸鱼之旅开始了！在30天内平衡工作与摸鱼，祝你好运！",
+            player_state=filtered_player_state,
+            message=ai_response.get("story_context", ai_response.get("story", "欢迎来到摸鱼大作战！")),
+            choices=ai_response.get("choices", []),
+            npc_info=npc_info,
+            company_info=company_info,
+            warm_story=warm_story,
+            game_meta=game_meta,
+            company_profile=company_profile,
+            npcs=npcs,
+            current_magical_element=current_magical_element
         )
 
     except Exception as e:
@@ -104,195 +201,289 @@ async def start_game(
 
 
 @router.post(
-    "/choices",
-    response_model=ChoicesResponse,
-    summary="获取 AI 生成的选项",
-    description="获取当前回合的5个 AI 生成的游戏选项",
-)
-async def get_choices(
-    request: ChoicesRequest,
-    session_service: SessionService = Depends(get_session_service),
-) -> ChoicesResponse:
-    """
-    获取 AI 生成的游戏选项（使用数据库存储）
-
-    Args:
-        request: 获取选项请求（包含会话ID）
-        session_service: 会话管理服务
-
-    Returns:
-        包含5个AI生成选项的响应
-
-    Raises:
-        HTTPException 404: 会话不存在
-        HTTPException 500: 服务器内部错误
-    """
-    try:
-        # 从数据库获取玩家状态
-        current_state = await session_service.get_player_state(request.session_id)
-
-        if current_state is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"会话 {request.session_id} 不存在",
-            )
-
-        # 获取历史记录（用于 AI 上下文）
-        history = await session_service.get_recent_history(request.session_id, limit=10)
-
-        # 调用 AI 服务生成选项
-        story_context, choices = await ai_service.generate_choices(
-            player_state=current_state.model_dump(),
-            history=history,
-        )
-
-        # 缓存当前选项（用于提交时验证）
-        current_choices[request.session_id] = choices
-
-        logger.info(f"🎮 生成选项 - Session: {request.session_id}, Day: {current_state.day}")
-
-        return ChoicesResponse(
-            story_context=story_context,
-            choices=choices,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ 获取选项失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取选项失败: {str(e)}",
-        )
-
-
-@router.post(
-    "/choice/submit",
+    "/act",
     response_model=ChoiceSubmitResponse,
-    summary="提交玩家选择",
-    description="处理玩家的选项选择并返回新的游戏状态",
+    summary="提交行动",
+    description="处理玩家的行动选择并返回AI生成的新内容",
 )
-async def submit_choice(
+async def submit_action(
     request: ChoiceSubmitRequest,
     session_service: SessionService = Depends(get_session_service),
+    context_service: ContextService = Depends(get_context_service),
+    ai_service: AIServiceV2 = Depends(get_ai_service),
 ) -> ChoiceSubmitResponse:
     """
-    提交玩家选择（使用数据库存储）
+    提交行动（AI驱动模式）
+
+    流程：
+    1. 获取会话上下文（messages + summaries）
+    2. 调用AI处理玩家行动
+    3. AI生成新剧情、选项和状态更新
+    4. 保存消息和关键事件
+    5. 返回AI生成的内容
 
     Args:
-        request: 提交选择请求（包含会话ID和选项ID）
-        session_service: 会话管理服务
+        request: 行动提交请求
+        session_service: 会话服务
+        context_service: 上下文服务
+        ai_service: AI服务
 
     Returns:
-        包含新游戏状态、反馈和触发事件的响应
+        包含AI生成新内容的响应
 
     Raises:
         HTTPException 404: 会话不存在
-        HTTPException 400: 选项ID无效
         HTTPException 500: 服务器内部错误
     """
     try:
-        # 从数据库获取会话信息和玩家状态
-        session_info = await session_service.get_session_info(request.session_id)
-        current_state = await session_service.get_player_state(request.session_id)
-
-        if session_info is None or current_state is None:
+        # 1. 验证会话
+        session = await session_service.get_session(request.session_id)
+        if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"会话 {request.session_id} 不存在",
             )
 
-        # 检查游戏是否已结束
-        if session_info.get("is_game_over", False):
+        if session["status"] != "active":
             return ChoiceSubmitResponse(
                 success=False,
-                player_state=current_state,
-                feedback=_get_action_feedback("游戏已结束"),
+                player_state={},
+                feedback=ActionFeedback(
+                    success="游戏已结束",
+                    flavor=[]
+                ),
                 triggered_events=[],
                 game_over=True,
                 game_over_reason="游戏已结束",
+                npc_info=None,
+                company_info=None,
+                warm_story=None,
+                npc_reaction=None,
+                current_magical_element=None
             )
 
-        # 查找选项（从缓存的当前选项中查找）
-        available_choices = current_choices.get(request.session_id, [])
-        selected_choice = None
-
-        for choice in available_choices:
-            if choice.id == request.choice_id:
-                selected_choice = choice
-                break
-
-        if selected_choice is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"无效的选项ID: {request.choice_id}，请先获取选项",
-            )
-
-        # 计算新状态
-        engine = GameEngine()
-        new_state, feedback, triggered_events = engine.calculate_new_state(
-            current_state, selected_choice
+        # 2. 记录玩家行动
+        await context_service.add_message(
+            session_id=request.session_id,
+            role="user",
+            content=request.choice_id  # 或完整的行动描述
         )
 
-        # 检查游戏结束
-        difficulty = session_info.get("difficulty", "normal")
-        is_game_over, game_over_reason = engine.check_game_over(new_state, difficulty)
+        # 3. 获取上下文
+        context = await context_service.get_context_for_ai(request.session_id)
 
+        # 4. 调用AI生成新内容
+        logger.info(f"🤖 调用AI处理行动 - Session: {request.session_id}, Choice: {request.choice_id}")
+
+        ai_response = await ai_service.generate_next_turn(
+            context=context,
+            user_action=request.choice_id,
+            seed=session["seed"]
+        )
+
+        # 5. 记录AI响应（安全获取story，降级到story_context）
+        story_content = ai_response.get("story") or ai_response.get("story_context", "")
+        await context_service.add_message(
+            session_id=request.session_id,
+            role="assistant",
+            content=story_content
+        )
+
+        # 6. 记录关键事件
+        await session_service.record_key_event(
+            session_id=request.session_id,
+            event_type="action_choice",
+            event_data={
+                "choice_id": request.choice_id,
+                "state_snapshot": ai_response.get("player_state", {}),
+                "ai_response": ai_response
+            }
+        )
+
+        # 7. 检查游戏结束
+        is_game_over = ai_response.get("is_game_over", False)
         if is_game_over:
-            # 标记游戏结束
-            await session_service.mark_game_over(
+            await session_service.end_session(
                 session_id=request.session_id,
-                reason=game_over_reason,
+                reason=ai_response.get("game_over_reason", "游戏结束"),
+                is_victory=ai_response.get("is_victory", False)
             )
-            logger.info(f"🏁 游戏结束 - Session: {request.session_id}, 原因: {game_over_reason}")
 
-        # 保存新的玩家状态到数据库
-        await session_service.save_player_state(
-            session_id=request.session_id,
-            state=new_state,
-        )
+        logger.success(f"✅ 行动处理完成 - Session: {request.session_id}")
 
-        # 记录历史（用于 AI 上下文）
-        await session_service.add_action_history(
-            session_id=request.session_id,
-            choice_id=selected_choice.id,
-            choice_text=selected_choice.text,
-            effects=selected_choice.effects,
-            player_state_snapshot=new_state.model_dump(),
-        )
+        # 解析更新后的NPC完整档案列表
+        updated_npcs = []
+        if ai_response.get("updated_npcs"):
+            from app.api.schemas import NPCProfile
+            for npc_data in ai_response["updated_npcs"]:
+                updated_npcs.append(NPCProfile(**npc_data))
 
-        logger.info(
-            f"✅ 选择提交成功 - Session: {request.session_id}, "
-            f"Day: {new_state.day}, Turn: {new_state.turn}"
+        # 解析NPC反应
+        npc_reaction = None
+        if ai_response.get("npc_reactions"):
+            from app.api.schemas import NPCReaction
+            reactions_data = ai_response["npc_reactions"]
+            npc_reaction = NPCReaction(
+                boss=reactions_data.get("boss"),
+                colleagues=reactions_data.get("colleagues"),
+                specific_npcs=reactions_data.get("specific_npcs", {})
+            )
+
+        # 解析魔幻元素
+        current_magical_element = None
+        element_data = ai_response.get("active_magical_element") or ai_response.get("current_magical_element")
+        if element_data:
+            from app.api.schemas import MagicalElement
+            current_magical_element = MagicalElement(**element_data)
+
+        # 解析简化版NPC信息（向后兼容）
+        npc_info = None
+        if ai_response.get("npc_info"):
+            npc_data = ai_response["npc_info"]
+            npc_info = NPCInfo(**npc_data)
+
+        # 解析简化版公司信息（向后兼容）
+        company_info = None
+        if ai_response.get("company_info"):
+            company_data = ai_response["company_info"]
+            company_info = CompanyInfo(**company_data)
+
+        warm_story = None
+        if ai_response.get("warm_story"):
+            warm_data = ai_response["warm_story"]
+            warm_story = WarmStory(**warm_data)
+
+        # 过滤玩家状态，移除隐藏字段（suspicion和progress）
+        filtered_player_state = filter_player_state_for_frontend(
+            ai_response.get("player_state", {})
         )
 
         return ChoiceSubmitResponse(
             success=True,
-            player_state=new_state,
-            feedback=feedback,
-            triggered_events=triggered_events,
+            player_state=filtered_player_state,
+            feedback=ActionFeedback(
+                success=ai_response.get("story_context", ai_response.get("story", "行动完成")),
+                flavor=ai_response.get("flavor_texts", [])
+            ),
+            triggered_events=ai_response.get("triggered_events", []),
             game_over=is_game_over,
-            game_over_reason=game_over_reason if is_game_over else None,
+            game_over_reason=ai_response.get("game_over_reason") if is_game_over else None,
+            npc_info=npc_info,
+            company_info=company_info,
+            warm_story=warm_story,
+            npc_reaction=npc_reaction,
+            current_magical_element=current_magical_element
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ 提交选择失败: {e}")
+        logger.error(f"❌ 提交行动失败: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"提交选择失败: {str(e)}",
+            detail=f"提交行动失败: {str(e)}",
         )
 
 
-# ========== 辅助函数 ==========
+@router.get(
+    "/state",
+    summary="获取当前状态",
+    description="获取会话的当前状态和最近消息",
+)
+async def get_state(
+    session_id: str,
+    session_service: SessionService = Depends(get_session_service),
+    context_service: ContextService = Depends(get_context_service),
+):
+    """
+    获取当前状态
+
+    Args:
+        session_id: 会话ID
+        session_service: 会话服务
+        context_service: 上下文服务
+
+    Returns:
+        会话状态和最近消息
+
+    Raises:
+        HTTPException 404: 会话不存在
+    """
+    try:
+        # 获取会话信息
+        session = await session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"会话 {session_id} 不存在",
+            )
+
+        # 获取最近消息
+        messages = await context_service.get_messages(session_id, limit=10)
+
+        # 获取token统计
+        token_stats = await context_service.get_token_stats(session_id)
+
+        return {
+            "session": session,
+            "recent_messages": [
+                {
+                    "role": msg.role,
+                    "content": msg.content,
+                    "created_at": msg.created_at.isoformat()
+                }
+                for msg in messages
+            ],
+            "token_stats": token_stats
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 获取状态失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取状态失败: {str(e)}",
+        )
 
 
-def _get_action_feedback(message: str):
-    """生成简单的行动反馈"""
-    from app.api.schemas import ActionFeedback
+@router.post(
+    "/resume",
+    summary="恢复会话",
+    description="从保存的消息和摘要恢复会话上下文",
+)
+async def resume_session(
+    request: ChoiceSubmitRequest,  # 复用请求结构
+    context_service: ContextService = Depends(get_context_service),
+):
+    """
+    恢复会话
 
-    return ActionFeedback(
-        success=message,
-        flavor=["行动已执行"],
-    )
+    Args:
+        request: 包含session_id的请求
+        context_service: 上下文服务
+
+    Returns:
+        重建的上下文
+
+    Raises:
+        HTTPException 404: 会话不存在
+    """
+    try:
+        # 重建上下文
+        context = await context_service.rebuild_context(request.session_id)
+
+        logger.info(f"✅ 会话恢复完成 - Session: {request.session_id}")
+
+        return {
+            "session_id": request.session_id,
+            "context": context,
+            "message_count": len(context)
+        }
+
+    except Exception as e:
+        logger.error(f"❌ 恢复会话失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"恢复会话失败: {str(e)}",
+        )

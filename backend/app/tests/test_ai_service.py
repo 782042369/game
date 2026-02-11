@@ -297,21 +297,5 @@ class TestAIService:
         assert "全力冲刺写代码" in prompt
         assert "茶水间摸鱼" in prompt
 
-    def test_get_story_context(self):
-        """测试生成剧情上下文"""
-        from app.prompts.system_prompt import get_story_context
-
-        player_state = {
-            "day": 10,
-            "energy": 30,
-            "progress": 45,
-        }
-
-        context = get_story_context(player_state)
-
-        # 验证返回值是字符串且不为空
-        assert isinstance(context, str)
-        assert len(context) > 0
-
-        # 验证包含玩家状态信息
-        assert "10" in context or "45" in context or "30" in context
+    # 已删除 test_get_story_context 测试
+    # 原因：get_story_context() 函数已被删除，改为纯AI生成剧情

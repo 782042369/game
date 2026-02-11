@@ -4,9 +4,6 @@
 提供数据库连接、初始化和会话管理功能
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import sessionmaker
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from app.core.config import settings
 from app.models.database import Base
@@ -27,15 +24,11 @@ async_session_maker = async_sessionmaker(
 )
 
 
-@asynccontextmanager
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_db_session():
     """
-    获取数据库会话的上下文管理器
+    获取数据库会话（FastAPI依赖注入）
 
-    Usage:
-        async with get_db_session() as session:
-            # 使用 session 进行数据库操作
-            result = await session.execute(query)
+    FastAPI会自动调用这个generator函数并管理session的生命周期
     """
     async with async_session_maker() as session:
         try:
