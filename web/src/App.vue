@@ -1,18 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
-import type { ActionType } from './game/types/actions'
+import type { ApiChoice } from './api/game'
 
 import ActionPanel from './components/ActionPanel.vue'
+import CompanyInfo from './components/CompanyInfo.vue'
 import EventArea from './components/EventArea.vue'
+import EventPanel from './components/EventPanel.vue'
 import HUD from './components/HUD.vue'
-import { GameEngine } from './game/core/engine'
+import NPCPanel from './components/NPCPanel.vue'
 import { useGameStore } from './stores/game'
 import { usePlayerStore } from './stores/player'
 
 const gameStore = useGameStore()
 const playerStore = usePlayerStore()
-const engine = new GameEngine()
 
 const eventLogs = ref<any[]>([])
 const currentIcon = ref('🧱')
@@ -23,14 +24,23 @@ const isGlitching = ref(false)
 const floatingPopups = ref<any[]>([])
 let popupId = 0
 
-const isBossNear = computed(() => playerStore.playerState.suspicion > 60)
+const player = computed(() => playerStore.playerState)
+const isLoading = computed(() => playerStore.isLoading)
+const isGameOver = computed(() => playerStore.isGameOver)
 
-function handleAction(action: ActionType) {
+const isBossNear = computed(() => player.value.suspicion > 60)
+
+async function handleAction(choiceId: string) {
+  // 找到对应的选项
+  const choice = playerStore.currentChoices.find(c => c.id === choiceId)
+  if (!choice)
+    return
+
   // 视觉反馈触发
   isAnimating.value = true
-  if (action.category === 'slack')
+  if (choice.category === 'slack')
     isGlitching.value = true
-  if (action.id === 'work_hard')
+  if (choice.id === 'work_hard')
     isShaking.value = true
 
   setTimeout(() => {
@@ -39,29 +49,45 @@ function handleAction(action: ActionType) {
     isShaking.value = false
   }, 300)
 
-  const result = engine.executeAction(action, playerStore.playerState)
-  playerStore.executeAction(action.id, result)
-  gameStore.gameState.currentTurn = playerStore.playerState.turn
+  try {
+    // 提交选择到后端
+    await playerStore.submitChoice(choiceId)
 
-  // 生成浮动数值反馈
-  action.effects.forEach((eff) => {
-    if (eff.value !== 0) {
-      addFloatingPopup(eff)
-    }
-  })
+    // 生成浮动数值反馈
+    Object.entries(choice.effects || {}).forEach(([stat, value]) => {
+      if (value !== 0) {
+        addFloatingPopup({ stat, value })
+      }
+    })
 
-  addLog({
-    time: getTimeString(playerStore.playerState.turn - 1),
-    type: action.category,
-    message: `> 执行任务: ${action.name}`,
-    effects: action.effects,
-  })
+    addLog({
+      time: getTimeString(player.value.turn),
+      type: choice.category,
+      message: `> 执行任务: ${choice.text}`,
+      effects: Object.entries(choice.effects || {}).map(([stat, value]) => ({ stat, value })),
+    })
 
-  currentIcon.value = action.icon || '📦'
-  currentStatusText.value = action.name
+    currentIcon.value = getIconForCategory(choice.category)
+    currentStatusText.value = choice.text
+  }
+  catch (error) {
+    console.error('提交行动失败:', error)
+    addLog({ time: getTimeString(player.value.turn), type: 'error', message: `提交失败: ${error}` })
+  }
 }
 
-function addFloatingPopup(eff: any) {
+function getIconForCategory(category: string): string {
+  const icons: Record<string, string> = {
+    work: '💼',
+    slack: '🍃',
+    social: '🍺',
+    skill: '📚',
+    growth: '🚀',
+  }
+  return icons[category] || '📦'
+}
+
+function addFloatingPopup(eff: { stat: string, value: number }) {
   const id = popupId++
   const text = `${getStatName(eff.stat)} ${eff.value > 0 ? '+' : ''}${eff.value}`
   const color = eff.value > 0 ? 'text-green-500' : 'text-red-500'
@@ -96,13 +122,13 @@ function getTimeString(turn: number) {
 
 async function resetGame() {
   try {
-    // 调用后端API重新开始游戏
-    await playerStore.startNewGame(gameStore.gameState.difficulty)
-
-    // 重置本地游戏状态
-    gameStore.startNewGame()
-
+    // 重置本地状态
     eventLogs.value = []
+    playerStore.reset()
+
+    // 调用后端API重新开始游戏
+    await playerStore.startNewGame('normal')
+
     addLog({ time: '09:00', type: 'info', message: '区块已重新加载。' })
   }
   catch (error) {
@@ -116,9 +142,6 @@ onMounted(async () => {
     // 调用后端API初始化游戏
     await playerStore.startNewGame('normal')
 
-    // 重置本地游戏状态
-    gameStore.startNewGame()
-
     currentStatusText.value = '准备就绪'
     addLog({ time: '09:00', type: 'info', message: '欢迎进入摸鱼服务器。' })
   }
@@ -126,6 +149,13 @@ onMounted(async () => {
     console.error('游戏初始化失败:', error)
     currentStatusText.value = '连接失败'
     addLog({ time: '09:00', type: 'error', message: `无法连接到服务器: ${error}` })
+  }
+})
+
+// 监听游戏状态变化
+watch(() => playerStore.currentMessage, (newMessage) => {
+  if (newMessage) {
+    currentStatusText.value = newMessage.substring(0, 20)
   }
 })
 </script>
@@ -151,22 +181,27 @@ onMounted(async () => {
         </div>
       </div>
       <div class="flex gap-4">
-        <button class="mc-btn text-sm uppercase tracking-widest shadow-lg !px-6" @click="resetGame">
-          重置世界
+        <button
+          class="mc-btn text-sm uppercase tracking-widest shadow-lg !px-6"
+          :disabled="isLoading"
+          @click="resetGame"
+        >
+          {{ isLoading ? '加载中...' : '重置世界' }}
         </button>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-8 relative z-10">
-      <!-- Left Column -->
-      <div class="md:col-span-4 lg:col-span-3 flex flex-col gap-6 min-h-0">
+    <main class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-4 relative z-10">
+      <!-- 左栏 (3列): HUD + CompanyInfo + EventArea -->
+      <div class="md:col-span-3 flex flex-col gap-4 min-h-0 overflow-y-auto">
         <HUD />
+        <CompanyInfo />
         <EventArea :logs="eventLogs" class="flex-1" />
       </div>
 
-      <!-- Right Column -->
-      <div class="md:col-span-8 lg:col-span-9 flex flex-col gap-6">
+      <!-- 中栏 (5列): Visual + ActionPanel -->
+      <div class="md:col-span-5 flex flex-col gap-4">
         <!-- Visual Viewport -->
         <div class="bg-[#1e1e1e] border-[12px] border-[#444444] rounded-none p-8 h-80 flex items-center justify-center relative shadow-[inset_0_0_60px_rgba(0,0,0,0.9),0_10px_0_0_#222222] overflow-hidden">
           <div class="absolute inset-0 opacity-5 pointer-events-none" style="background-image: linear-gradient(#ffffff 2px, transparent 2px), linear-gradient(90deg, #ffffff 2px, transparent 2px); background-size: 40px 40px;" />
@@ -201,19 +236,38 @@ onMounted(async () => {
         </div>
 
         <!-- Actions -->
-        <ActionPanel class="flex-1" @action="handleAction" />
+        <ActionPanel class="flex-1" @choice="handleAction" />
+      </div>
+
+      <!-- 右栏 (4列): NPCPanel + EventPanel -->
+      <div class="md:col-span-4 flex flex-col gap-4 min-h-0 overflow-y-auto">
+        <NPCPanel />
+        <EventPanel />
       </div>
     </main>
 
+    <!-- 游戏结束提示 -->
+    <div
+      v-if="isGameOver"
+      class="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+    >
+      <div class="bg-[#313131] border-4 border-mc-border p-8 text-center max-w-md">
+        <h2 class="text-3xl font-pixel font-bold text-mc-text mb-4">游戏结束</h2>
+        <p class="text-mc-text mb-6">{{ playerStore.storyContext }}</p>
+        <button class="mc-btn !px-8 !py-3" @click="resetGame">
+          重新开始
+        </button>
+      </div>
+    </div>
+
     <footer class="flex justify-between items-center px-6 py-3 bg-black/20 border-t-2 border-mc-border/20 text-[11px] text-mc-border font-pixel font-bold uppercase tracking-widest relative z-10">
       <div class="flex items-center gap-4">
-        <span class="flex items-center gap-1"><span class="w-2 h-2 bg-green-500" /> ONLINE</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2" :class="isLoading ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'" /> {{ isLoading ? 'LOADING' : 'ONLINE' }}</span>
         <span>SLACK_VER: 1.3.0</span>
       </div>
       <div class="flex gap-6 opacity-60">
-        <span>MEM: 4.8GB / 8.0GB</span>
-        <span>TPS: 19.8</span>
-        <span>PING: 12MS</span>
+        <span>DAY: {{ player.day }}</span>
+        <span>TURN: {{ player.turn }}</span>
       </div>
       <div class="text-mc-text/40">
         坐标: x:1024, z:-2048
