@@ -1,94 +1,183 @@
 import { defineStore } from 'pinia'
-import { computed, reactive } from 'vue'
+import { ref, computed } from 'vue'
 
-import type { GameConfig, GameState } from '../game/types/game'
+/**
+ * 游戏状态管理（v2 - 纯UI状态）
 
+ 职责：
+ - 管理UI相关状态（sessionId, loading, error）
+ - 封装API调用
+ - 不包含任何游戏逻辑计算
+ */
 export const useGameStore = defineStore('game', () => {
-  // 状态
-  const gameState = reactive<GameState>({
-    isPlaying: false,
-    isPaused: false,
-    isGameOver: false,
+  // ========== UI状态 ==========
 
-    // 时间相关
-    currentTurn: 0, // 当前回合 (0-7)
-    currentDay: 1, // 当前天数 (1-30)
-    currentWeek: 1, // 当前周数 (1-4)
-    currentPeriod: 'morning', // 当前时段
+  const sessionId = ref<string | null>(null)
+  const currentMessage = ref<string>('')
+  const choices = ref<any[]>([])
+  const isLoading = ref(false)
+  const error = ref<string | null>(null)
 
-    // 游戏配置
-    difficulty: 'normal',
-    seed: Date.now(), // 随机数种子
+  // ========== 计算属性 ==========
 
-    // UI状态
-    isInEvent: false,
-    isLoading: false,
-    error: null,
+  const isGameOver = computed(() => {
+    // 由后端AI判断，前端只展示
+    return choices.value.length === 0 && currentMessage.value !== ''
   })
 
-  // 计算属性
-  const isGameOver = computed(() => gameState.isGameOver)
-  const canSave = computed(() => gameState.isPlaying && !gameState.isInEvent)
+  const hasError = computed(() => error.value !== null)
 
-  // Actions
-  function startNewGame(config?: Partial<GameConfig>) {
-    // Reset state manually for now
-    gameState.isPlaying = true
-    gameState.isPaused = false
-    gameState.isGameOver = false
-    gameState.currentTurn = 0
-    gameState.currentDay = 1
-    gameState.currentWeek = 1
-    gameState.currentPeriod = 'morning'
-    gameState.isInEvent = false
+  // ========== Actions ==========
 
-    if (config) {
-      if (config.difficulty)
-        gameState.difficulty = config.difficulty
-      if (config.seed)
-        gameState.seed = config.seed
+  /**
+   * 开始新游戏（调用后端API）
+   */
+  async function startNewGame(playerName: string = '程序员小王', difficulty: 'normal' | 'easy' | 'hard' = 'normal') {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await fetch('/api/game/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_name: playerName, difficulty }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      sessionId.value = data.session_id
+      currentMessage.value = data.message
+      choices.value = data.choices || []
+
+      return data
+    }
+    catch (err) {
+      error.value = err instanceof Error ? err.message : '开始游戏失败'
+      throw err
+    }
+    finally {
+      isLoading.value = false
     }
   }
 
-  function pauseGame() {
-    gameState.isPaused = true
-  }
+  /**
+   * 提交行动选择
+   */
+  async function makeChoice(choiceId: string) {
+    if (!sessionId.value) {
+      error.value = '没有活动会话，请先开始游戏'
+      return
+    }
 
-  function resumeGame() {
-    gameState.isPaused = false
-  }
+    isLoading.value = true
+    error.value = null
 
-  function endGame() {
-    gameState.isGameOver = true
-    gameState.isPlaying = false
-  }
+    try {
+      const response = await fetch('/api/game/act', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId.value,
+          choice_id: choiceId,
+        }),
+      })
 
-  function nextTurn() {
-    // Simple turn logic for now, will be expanded in engine
-    gameState.currentTurn++
-    if (gameState.currentTurn >= 8) { // MAX_TURNS_PER_DAY
-      // Day transition logic would be here or in engine
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      currentMessage.value = data.feedback?.success || ''
+      choices.value = data.choices || []
+
+      // 检查游戏结束
+      if (data.game_over) {
+        sessionId.value = null
+        choices.value = []
+      }
+
+      return data
+    }
+    catch (err) {
+      error.value = err instanceof Error ? err.message : '提交选择失败'
+      throw err
+    }
+    finally {
+      isLoading.value = false
     }
   }
 
-  function setInEvent(inEvent: boolean) {
-    gameState.isInEvent = inEvent
+  /**
+   * 获取当前状态
+   */
+  async function fetchState() {
+    if (!sessionId.value) {
+      error.value = '没有活动会话'
+      return
+    }
+
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await fetch(`/api/game/state?session_id=${sessionId.value}`)
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      return data
+    }
+    catch (err) {
+      error.value = err instanceof Error ? err.message : '获取状态失败'
+      throw err
+    }
+    finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * 重置状态
+   */
+  function reset() {
+    sessionId.value = null
+    currentMessage.value = ''
+    choices.value = []
+    isLoading.value = false
+    error.value = null
+  }
+
+  /**
+   * 清除错误
+   */
+  function clearError() {
+    error.value = null
   }
 
   return {
     // 状态
-    gameState,
+    sessionId,
+    currentMessage,
+    choices,
+    isLoading,
+    error,
 
     // 计算属性
     isGameOver,
-    canSave,
+    hasError,
 
     // Actions
     startNewGame,
-    pauseGame,
-    resumeGame,
-    endGame,
-    nextTurn,
-    setInEvent,
+    makeChoice,
+    fetchState,
+    reset,
+    clearError,
   }
 })
